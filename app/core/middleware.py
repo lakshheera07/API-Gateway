@@ -3,7 +3,9 @@ import uuid
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
-import logging
+from .logging import setup_logging
+
+logger = setup_logging()
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -17,7 +19,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         try:
             response: Response = await call_next(request)
         except Exception as e:
-            logging.exception("Unhandled exception occurred",
+            logger.exception("Unhandled exception occurred",
                               extra={"request_id": request_id}
                 )
             raise e
@@ -27,7 +29,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Process-Time"] = str(round(process_time_ms, 2))
 
-        logging.info("Request processed Successfully",
+        logger.bind(request_id=request_id).info("Request processed Successfully",
                      extra={"request_id": request_id,
                              "process_time": round(process_time_ms, 2),
                              "status_code": response.status_code,
