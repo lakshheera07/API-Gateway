@@ -13,95 +13,67 @@ A robust API Gateway built with FastAPI featuring rate limiting, request logging
 
 ## Architecture
 
-```plantuml
-@startuml
-package "API Gateway" {
-    [FastAPI App] as app
-    [Middleware] as middleware
-    [Routes] as routes
-}
-
-package "Services" {
-    [Request Context] as ctx
-    [Logging] as logging
-    [Metrics] as metrics
-    [Rate Limiter] as ratelimit
-    [Circuit Breaker] as breaker
-}
-
-package "External" {
-    database "Redis" as redis
-    [Downstream Services] as downstream
-}
-
-app --> middleware
-middleware --> ctx
-middleware --> logging
-middleware --> metrics
-middleware --> ratelimit
-middleware --> breaker
-ratelimit --> redis
-breaker --> redis
-app --> routes
-routes --> downstream
-breaker --> downstream
-
-note right of middleware
-  Handles:
-  - Request ID generation
-  - Rate limiting checks
-  - Circuit breaker validation
-  - Metrics collection
-  - Logging
-end note
-
-note right of breaker
-  Monitors:
-  - Service failures
-  - Recovery status
-  - Circuit state
-end note
-
-note right of redis
-  Stores:
-  - Rate limit counters
-  - Circuit breaker state
-  - Request timestamps
-end note
-@enduml
+```mermaid
+graph TB
+    subgraph Gateway["API Gateway"]
+        app["FastAPI App"]
+        middleware["Middleware"]
+        routes["Routes"]
+    end
+    
+    subgraph Services["Services"]
+        ctx["Request Context"]
+        logging["Logging"]
+        metrics["Metrics"]
+        ratelimit["Rate Limiter"]
+        breaker["Circuit Breaker"]
+    end
+    
+    subgraph External["External"]
+        redis["Redis"]
+        downstream["Downstream Services"]
+    end
+    
+    app --> middleware
+    middleware --> ctx
+    middleware --> logging
+    middleware --> metrics
+    middleware --> ratelimit
+    middleware --> breaker
+    ratelimit --> redis
+    breaker --> redis
+    app --> routes
+    routes --> downstream
+    breaker --> downstream
 ```
 
 ## Request Flow Diagram
 
-```plantuml
-@startuml
-start
-:Incoming Request;
-:Generate Request ID;
-:Extract Client IP;
-:Check Rate Limit;
-if (Rate Limited?) then (yes)
-  :Return 429 Status;
-  :Log Rate Limit Error;
-  stop
-else (no)
-  :Record Request Start;
-  :Process Request;
-  :Catch Exception?;
-  if (Exception?) then (yes)
-    :Log Exception;
-    :Raise Error;
-    stop
-  else (no)
-    :Calculate Latency;
-    :Update Prometheus Metrics;
-    :Add Response Headers;
-    :Log Request Success;
-    :Return Response;
-    stop
-  endif
-endif
-@enduml
+```mermaid
+flowchart TD
+    A["Incoming Request"] --> B["Generate Request ID"]
+    B --> C["Extract Client IP"]
+    C --> D["Check Rate Limit"]
+    D -->|Rate Limited| E["Return 429 Status"]
+    E --> F["Log Rate Limit Error"]
+    F --> Z1["End"]
+    D -->|Not Limited| G["Check Circuit Breaker"]
+    G -->|Circuit Open| H["Return 503 Status"]
+    H --> I["Log Circuit Open"]
+    I --> Z2["End"]
+    G -->|Circuit Closed| J["Record Request Start"]
+    J --> K["Process Request"]
+    K --> L{"Exception?"}
+    L -->|Yes| M["Log Exception"]
+    M --> N["Record Failure"]
+    N --> Z3["End"]
+    L -->|No| O["Calculate Latency"]
+    O --> P["Record Success"]
+    P --> Q["Update Prometheus Metrics"]
+    Q --> R["Add Response Headers"]
+    R --> S["Log Request Success"]
+    S --> T["Return Response"]
+    T --> Z4["End"]
 ```
 
 ## Project Structure
