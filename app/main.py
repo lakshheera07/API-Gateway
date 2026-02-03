@@ -1,6 +1,14 @@
 from fastapi import FastAPI
 import uvicorn
-app = FastAPI()
+import logging
+from core.middleware import RequestContextMiddleware
+
+logging.basicConfig(level=logging.INFO)
+
+app = FastAPI(title="My API Gateway")
+
+app.add_middleware(RequestContextMiddleware)    
+
 
 @app.get("/health")
 def health_check():
