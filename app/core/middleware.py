@@ -1,10 +1,12 @@
 import time
 import uuid
-from fastapi import Request
+from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
-from .logging import setup_logging
-from .metrics import REQUEST_COUNT, REQUEST_LATENCY
+from starlette.responses import Response, JSONResponse
+from app.core.logging import setup_logging
+from app.core.metrics import REQUEST_COUNT, REQUEST_LATENCY
+from app.gateway.rate_limiter import is_rate_limited
+
 
 logger = setup_logging()
 
@@ -13,9 +15,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         request_id = str(uuid.uuid4())
         start_time = time.perf_counter()
 
-
         # attach request ID to request state
         request.state.request_id = request_id
+
+        # Rate limiting
+        client_ip = request.client.host
+        if is_rate_limited(client_ip):
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded"}
+            )
 
         try:
             response: Response = await call_next(request)
