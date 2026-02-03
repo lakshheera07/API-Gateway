@@ -4,6 +4,7 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from .logging import setup_logging
+from .metrics import REQUEST_COUNT, REQUEST_LATENCY
 
 logger = setup_logging()
 
@@ -26,6 +27,19 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         
         # add custom headers to response
         process_time_ms = (time.perf_counter() - start_time) * 1000
+
+        # Update Prometheus metrics
+        REQUEST_COUNT.labels(
+            method=request.method,
+            endpoint=str(request.url.path),
+            http_status=response.status_code
+        ).inc()
+
+        REQUEST_LATENCY.labels(
+            method=request.method,
+            endpoint=str(request.url.path)
+        ).observe(process_time_ms)
+
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Process-Time"] = str(round(process_time_ms, 2))
 

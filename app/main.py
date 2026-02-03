@@ -1,8 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from contextlib import asynccontextmanager
 import uvicorn
 from .core.middleware import RequestContextMiddleware
 from .core.logging import setup_logging
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 
 logger = setup_logging().bind(request_id="system")
@@ -23,6 +24,13 @@ app.add_middleware(RequestContextMiddleware)
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@app.get("/metrics")
+def metrics():
+    return Response(
+        generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+        )
 
 
 if __name__ == "__main__":
