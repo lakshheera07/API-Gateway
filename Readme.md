@@ -6,8 +6,10 @@ A robust API Gateway built with FastAPI featuring rate limiting, request logging
 
 - ✅ **Rate Limiting** - Sliding window rate limiter using Redis
 - ✅ **Circuit Breaker** - Prevents cascading failures with automatic recovery
+- ✅ **Exponential Backoff Retry** - Intelligent retry mechanism with exponential backoff
 - ✅ **Request Logging** - Structured JSON logging with request context
 - ✅ **Metrics** - Prometheus metrics for monitoring
+- ✅ **Grafana Dashboard** - Real-time monitoring with detailed metrics and gauges
 - ✅ **Request Context** - Request ID tracking across the system
 - ✅ **Health Check** - Built-in health check endpoint
 
@@ -231,6 +233,67 @@ curl -X POST http://127.0.0.1:8000/simulate-failure
 curl http://127.0.0.1:8000/health  # Should return 503 if circuit is open
 ```
 
+## Exponential Backoff Retry
+
+The API Gateway implements intelligent retry logic with exponential backoff to handle transient failures:
+
+### How It Works
+- **Base Delay**: Starts with 1 second
+- **Multiplier**: Doubles on each retry (1s → 2s → 4s → 8s)
+- **Max Retries**: Configurable (default: 3)
+- **Jitter**: Optional random jitter to prevent thundering herd
+
+### Configuration
+```python
+RETRY_MAX_ATTEMPTS: int = 3          # Maximum number of retries
+RETRY_BASE_DELAY: float = 1.0        # Initial delay in seconds
+RETRY_MAX_DELAY: float = 30.0        # Maximum delay in seconds
+RETRY_EXPONENTIAL_BASE: float = 2.0  # Exponential multiplier
+```
+
+### Usage Example
+```python
+from app.gateway.retry import retry_request
+
+try:
+    response = await retry_request(
+        "http://downstream-service/endpoint",
+        method="GET",
+        max_retries=3
+    )
+    return response.json()
+except Exception as e:
+    logger.error(f"Request failed after retries: {e}")
+    raise
+```
+
+### Retry Flow
+```
+Attempt 1 (immediate)
+    ↓ Failure
+Wait 1s (2^0)
+Attempt 2
+    ↓ Failure
+Wait 2s (2^1)
+Attempt 3
+    ↓ Failure
+Wait 4s (2^2)
+Attempt 4
+    ↓ Success/Failure → Return
+```
+
+### Testing Exponential Backoff
+```bash
+# Enable failure simulation
+curl -X POST http://127.0.0.1:8000/simulate-failure
+
+# Make proxy request (will retry with backoff)
+curl http://127.0.0.1:8000/proxy
+
+# Disable failure simulation
+curl -X POST http://127.0.0.1:8000/simulate-recovery
+```
+
 ## Rate Limiting
 
 The API Gateway implements a **sliding window rate limiter** using Redis:
@@ -293,6 +356,112 @@ Prometheus metrics are collected for:
 
 Access metrics at `/metrics` endpoint.
 
+## Grafana Dashboard
+
+A comprehensive Grafana dashboard is included for real-time monitoring of the API Gateway.
+
+### Dashboard Features
+
+**Endpoint Request Gauges (Top Row)**
+- Visual gauges for each endpoint showing request count in the last 5 minutes
+- Color-coded thresholds:
+  - 🟢 Green: Normal traffic
+  - 🟡 Yellow: Moderate traffic
+  - 🔴 Red: High traffic/concerning levels
+
+Endpoints monitored:
+- `GET /health` - Health check endpoint
+- `GET /metrics` - Prometheus metrics
+- `GET /proxy` - Proxy/gateway endpoint
+- `GET /downstream` - Mock downstream service
+- `POST /simulate-failure` - Test failure injection
+- `POST /simulate-recovery` - Test failure recovery
+
+**Time Series Charts**
+
+1. **Request Rate by Endpoint** (per second)
+   - Shows throughput for each endpoint over time
+   - Helps identify traffic patterns and spikes
+
+2. **P95 Latency by Endpoint** (milliseconds)
+   - 95th percentile latency for each endpoint
+   - Identifies performance issues
+
+3. **Error Rate by Endpoint** (per second)
+   - Separates 4xx and 5xx errors
+   - Tracks error trends
+
+4. **Circuit Breaker State Changes**
+   - Monitors circuit breaker transitions
+   - Identifies when services are failing
+
+### Accessing the Dashboard
+
+1. **Start the services**:
+```bash
+docker-compose -f docker/docker-compose.yml up
+```
+
+2. **Open Grafana**:
+   - URL: `http://localhost:3000`
+   - Default credentials: `admin` / `admin`
+
+3. **View the dashboard**:
+   - Name: "API Gateway Metrics Dashboard"
+   - Auto-refreshes every 5 seconds
+   - Data window: Last 1 hour
+
+### Dashboard Configuration
+
+The dashboard is defined in `app/observability/grafanaDashboard.json`:
+- **Refresh Rate**: 5 seconds (configurable)
+- **Time Range**: Last 1 hour
+- **Data Source**: Prometheus
+- **Visualization Types**: Gauges, Time Series, Stats
+
+### Interpreting the Dashboard
+
+**Green Gauges**: 
+- Traffic is normal and within expected thresholds
+- System is operating optimally
+
+**Yellow Gauges**: 
+- Elevated traffic or concerning metrics
+- May indicate increased load or potential issues
+
+**Red Gauges**: 
+- High traffic or error rates
+- Investigate immediately for service degradation
+
+**Rising Latency Lines**: 
+- Performance degradation detected
+- Check downstream services or increase resources
+
+**Error Rate Spikes**: 
+- Multiple failures occurring
+- Circuit breaker may open soon
+
+### Prometheus Queries
+
+Common queries for custom monitoring:
+
+```promql
+# Total requests per endpoint (5 minutes)
+increase(http_requests_total[5m])
+
+# Request rate per second
+rate(http_requests_total[1m])
+
+# P95 latency
+histogram_quantile(0.95, rate(http_request_latency_ms_bucket[5m]))
+
+# Error rate (4xx and 5xx)
+rate(http_requests_total{status_code=~"[45].."}[1m])
+
+# Circuit breaker state changes
+increase(circuit_breaker_state_changes_total[5m])
+```
+
 ## Error Handling
 
 - **429 Too Many Requests** - Rate limit exceeded
@@ -313,4 +482,5 @@ For issues and questions, please create a GitHub issue at [API-Gateway Issues](h
 
 ---
 
-**Last Updated**: February 4, 2026
+**Last Updated**: February 5, 2026
+**Features**: Rate Limiting, Circuit Breaker, Exponential Backoff, Prometheus Metrics, Grafana Dashboard
