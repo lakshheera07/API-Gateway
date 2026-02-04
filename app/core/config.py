@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
 
-    RATE_LIMIT_REQUESTS: int = 100
-    RATE_LIMIT_WINDOW_SEC: int = 60
+    RATE_LIMIT_REQUESTS: int = 20
+    RATE_LIMIT_WINDOW_SEC: int = 30
 
     CIRCUIT_FAILURE_THRESHOLD: int = 5
     CIRCUIT_RECOVERY_TIMEOUT: int = 30
